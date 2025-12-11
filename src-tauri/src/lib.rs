@@ -5,6 +5,7 @@ pub mod clipboard_manager;
 pub mod emoji_manager;
 pub mod focus_manager;
 pub mod hotkey_manager;
+pub mod input_simulator;
 
 pub use clipboard_manager::{ClipboardContent, ClipboardItem, ClipboardManager};
 pub use emoji_manager::{EmojiManager, EmojiUsage};
