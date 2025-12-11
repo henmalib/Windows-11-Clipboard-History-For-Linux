@@ -102,28 +102,25 @@ case "$DISTRO" in
         cat > "$INSTALL_DIR/win11-clipboard-history" << 'WRAPPER'
 #!/bin/bash
 # Wrapper script for win11-clipboard-history AppImage
-# Cleans environment to avoid Snap library conflicts
+# Cleans environment to avoid Snap/GTK library conflicts
 
 APPIMAGE="$HOME/.local/lib/win11-clipboard-history/win11-clipboard-history.AppImage"
 
-# If running from a Snap-polluted environment, clean it
-if [[ -n "$SNAP" ]] || [[ "$LD_LIBRARY_PATH" == */snap/* ]]; then
-    exec env -i \
-        HOME="$HOME" \
-        USER="$USER" \
-        DISPLAY="${DISPLAY:-:0}" \
-        XAUTHORITY="$XAUTHORITY" \
-        WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        XDG_SESSION_TYPE="$XDG_SESSION_TYPE" \
-        XDG_CURRENT_DESKTOP="$XDG_CURRENT_DESKTOP" \
-        DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-        PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin" \
-        LANG="${LANG:-en_US.UTF-8}" \
-        "$APPIMAGE" "$@"
-else
-    exec "$APPIMAGE" "$@"
-fi
+# Always use clean environment to avoid library conflicts
+# Snap and other containerized apps can pollute GTK_PATH, LD_LIBRARY_PATH, etc.
+exec env -i \
+    HOME="$HOME" \
+    USER="$USER" \
+    DISPLAY="${DISPLAY:-:0}" \
+    XAUTHORITY="$XAUTHORITY" \
+    WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    XDG_SESSION_TYPE="$XDG_SESSION_TYPE" \
+    XDG_CURRENT_DESKTOP="$XDG_CURRENT_DESKTOP" \
+    DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin" \
+    LANG="${LANG:-en_US.UTF-8}" \
+    "$APPIMAGE" "$@"
 WRAPPER
         chmod +x "$INSTALL_DIR/win11-clipboard-history"
         
