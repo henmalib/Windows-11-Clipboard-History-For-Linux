@@ -22,7 +22,7 @@ command -v curl >/dev/null 2>&1 || error "curl is required but not installed."
 # Get latest release tag
 log "Fetching latest release version..."
 LATEST_RELEASE_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-VERSION=$(curl -s "$LATEST_RELEASE_URL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+VERSION=$(curl -s "$LATEST_RELEASE_URL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '[:space:]')
 
 if [ -z "$VERSION" ]; then
     error "Failed to fetch latest version. Please check your internet connection."
