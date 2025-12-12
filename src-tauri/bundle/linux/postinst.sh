@@ -261,46 +261,50 @@ EOF
 
 setup_autostart "$ACTUAL_USER"
 
-# Launch the app for the user (in background, as the actual user)
+# Try to launch the app for the user via desktop environment
 launch_app() {
     local user="$1"
     
     if [ -z "$user" ] || [ "$user" = "root" ]; then
-        return
+        return 1
     fi
     
-    # Only launch if we have permissions ready (no logout needed)
+    # Skip if logout is required
     if [ "$NEEDS_LOGOUT" = true ]; then
-        return
+        return 1
     fi
     
-    # Get user's home directory and display info
-    local user_home
-    user_home=$(getent passwd "$user" | cut -d: -f6)
+    # Get user's runtime dir for proper D-Bus access
+    local user_id
+    user_id=$(id -u "$user" 2>/dev/null) || return 1
+    local runtime_dir="/run/user/$user_id"
     
-    if [ -z "$user_home" ]; then
-        return
+    # Check if we have a display
+    if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        return 1
     fi
     
-    echo -e "${BLUE}Starting Clipboard History...${NC}"
-    
-    # Launch the app as the actual user with proper environment
-    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
-        # We have a display, try to launch
-        su - "$user" -c "nohup win11-clipboard-history > /dev/null 2>&1 &" 2>/dev/null || true
-        sleep 1
-        
-        if pgrep -u "$user" -x "win11-clipboard-history" > /dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC} App started successfully"
-        else
-            echo -e "${YELLOW}!${NC} Could not start app automatically. Please run 'win11-clipboard-history' manually."
-        fi
-    else
-        echo -e "${YELLOW}!${NC} No display detected. The app will start on next login."
+    # Try to launch via gtk-launch (works properly with user context)
+    if command -v gtk-launch &> /dev/null; then
+        sudo -u "$user" \
+            DISPLAY="${DISPLAY:-:0}" \
+            WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            gtk-launch win11-clipboard-history 2>/dev/null &
+        return 0
     fi
+    
+    return 1
 }
 
-launch_app "$ACTUAL_USER"
+APP_LAUNCHED=false
+if launch_app "$ACTUAL_USER"; then
+    sleep 1
+    if pgrep -u "$ACTUAL_USER" -x "win11-clipboard-history" > /dev/null 2>&1; then
+        APP_LAUNCHED=true
+    fi
+fi
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
@@ -309,18 +313,18 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 
 if [ "$NEEDS_LOGOUT" = true ]; then
-    echo -e "${YELLOW}IMPORTANT: Please log out and log back in for permissions to apply.${NC}"
+    echo -e "${YELLOW}⚠ Please log out and log back in for permissions to apply.${NC}"
     echo ""
     echo "After logging back in, the app will start automatically."
+elif [ "$APP_LAUNCHED" = true ]; then
+    echo -e "${GREEN}✓ App is now running! Press Super+V or Ctrl+Alt+V to open.${NC}"
 else
-    echo -e "${GREEN}✓ Ready to use! Press Super+V or Ctrl+Alt+V to open clipboard history.${NC}"
+    echo -e "${GREEN}✓ Ready to use!${NC}"
+    echo ""
+    echo "The app will start automatically on your next login."
+    echo "To start now, find 'Clipboard History' in your application menu."
 fi
 
-echo ""
-echo "Tips:"
-echo "  • The app runs in the system tray"
-echo "  • Use Super+V or Ctrl+Alt+V to open clipboard history"
-echo "  • Run 'win11-clipboard-history --version' to check version"
 echo ""
 
 exit 0

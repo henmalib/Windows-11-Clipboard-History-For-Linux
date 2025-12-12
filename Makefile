@@ -295,6 +295,7 @@ install:
 	fi
 	@# Grant immediate access with ACLs and determine if logout is needed
 	@NEEDS_LOGOUT=false; \
+	APP_LAUNCHED=false; \
 	if [ -n "$$SUDO_USER" ]; then \
 		if groups $$SUDO_USER 2>/dev/null | grep -q '\binput\b'; then \
 			NEEDS_LOGOUT=false; \
@@ -309,25 +310,37 @@ install:
 			NEEDS_LOGOUT=true; \
 		fi; \
 	fi; \
+	if [ "$$NEEDS_LOGOUT" = false ] && [ -n "$$SUDO_USER" ] && command -v gtk-launch >/dev/null 2>&1; then \
+		USER_ID=$$(id -u $$SUDO_USER 2>/dev/null); \
+		if [ -n "$$USER_ID" ] && [ -n "$$DISPLAY" -o -n "$$WAYLAND_DISPLAY" ]; then \
+			sudo -u $$SUDO_USER \
+				DISPLAY="$${DISPLAY:-:0}" \
+				WAYLAND_DISPLAY="$$WAYLAND_DISPLAY" \
+				XDG_RUNTIME_DIR="/run/user/$$USER_ID" \
+				DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$$USER_ID/bus" \
+				gtk-launch $(APP_NAME) 2>/dev/null & \
+			sleep 1; \
+			if pgrep -u $$SUDO_USER -x "$(APP_NAME)" > /dev/null 2>&1; then \
+				APP_LAUNCHED=true; \
+			fi; \
+		fi; \
+	fi; \
 	echo -e "$(GREEN)✓ Installed successfully$(RESET)"; \
 	echo ""; \
 	if [ "$$NEEDS_LOGOUT" = true ]; then \
 		echo -e "$(YELLOW)╔════════════════════════════════════════════════════════════════╗$(RESET)"; \
-		echo -e "$(YELLOW)║     IMPORTANT: Log out and log back in for permissions         ║$(RESET)"; \
+		echo -e "$(YELLOW)║     ⚠ Please log out and log back in for permissions          ║$(RESET)"; \
 		echo -e "$(YELLOW)╚════════════════════════════════════════════════════════════════╝$(RESET)"; \
+		echo ""; \
+		echo "After logging back in, the app will start automatically."; \
+	elif [ "$$APP_LAUNCHED" = true ]; then \
+		echo -e "$(GREEN)╔════════════════════════════════════════════════════════════════╗$(RESET)"; \
+		echo -e "$(GREEN)║     ✓ App is now running! Press Super+V to open.              ║$(RESET)"; \
+		echo -e "$(GREEN)╚════════════════════════════════════════════════════════════════╝$(RESET)"; \
 	else \
 		echo -e "$(GREEN)╔════════════════════════════════════════════════════════════════╗$(RESET)"; \
-		echo -e "$(GREEN)║     ✓ Ready to use! Press Super+V to open clipboard history    ║$(RESET)"; \
+		echo -e "$(GREEN)║     ✓ Installed! Find 'Clipboard History' in your app menu.   ║$(RESET)"; \
 		echo -e "$(GREEN)╚════════════════════════════════════════════════════════════════╝$(RESET)"; \
-		if [ -n "$$DISPLAY" ] || [ -n "$$WAYLAND_DISPLAY" ]; then \
-			echo ""; \
-			echo -e "$(CYAN)Starting app...$(RESET)"; \
-			su - $$SUDO_USER -c "nohup $(APP_NAME) > /dev/null 2>&1 &" 2>/dev/null || true; \
-			sleep 1; \
-			if pgrep -u $$SUDO_USER -x "$(APP_NAME)" > /dev/null 2>&1; then \
-				echo -e "$(GREEN)✓ App started$(RESET)"; \
-			fi; \
-		fi; \
 	fi
 	@echo ""
 

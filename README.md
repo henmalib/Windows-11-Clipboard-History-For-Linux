@@ -405,6 +405,23 @@ Contributions are welcome! Here's how you can help:
 - Add tests for new features
 - Update documentation as needed
 
+### 🗑️ Uninstalling
+
+**Ubuntu / Debian / Linux Mint:**
+```bash
+sudo apt remove win11-clipboard-history
+```
+
+**Fedora / RHEL:**
+```bash
+sudo dnf remove win11-clipboard-history
+```
+
+**AppImage (other distros):**
+```bash
+rm -rf ~/.local/lib/win11-clipboard-history ~/.local/bin/win11-clipboard-history ~/.config/autostart/win11-clipboard-history.desktop
+```
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

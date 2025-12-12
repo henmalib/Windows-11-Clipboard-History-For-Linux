@@ -334,50 +334,70 @@ EOF
 
 setup_autostart
 
-# Launch the app if permissions are ready
+# Try to launch the app (for curl install, we're not running as root for AppImage)
 launch_app() {
-    # Only launch if we have permissions ready (no logout needed)
+    # Skip if logout is required
     if [ "$NEEDS_LOGOUT" = true ]; then
-        return
+        return 1
     fi
     
-    log "Starting Clipboard History..."
+    # Check if we have a display
+    if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        return 1
+    fi
     
-    # Launch the app in background
-    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+    # For .deb/.rpm installs, use gtk-launch
+    if command -v gtk-launch &> /dev/null; then
+        gtk-launch win11-clipboard-history 2>/dev/null &
+        return 0
+    fi
+    
+    # For AppImage, launch directly
+    if command -v win11-clipboard-history &> /dev/null; then
         nohup win11-clipboard-history > /dev/null 2>&1 &
-        sleep 1
-        
-        if pgrep -x "win11-clipboard-history" > /dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC} App started successfully"
-        else
-            log "Could not start app automatically. Please run 'win11-clipboard-history' manually."
-        fi
-    else
-        log "No display detected. The app will start on next login."
+        return 0
     fi
+    
+    return 1
 }
 
-launch_app
+APP_LAUNCHED=false
+if launch_app; then
+    sleep 1
+    if pgrep -x "win11-clipboard-history" > /dev/null 2>&1; then
+        APP_LAUNCHED=true
+    fi
+fi
 
 success "Installation completed successfully!"
 echo ""
 
 if [ "$NEEDS_LOGOUT" = true ]; then
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    IMPORTANT: Please log out                   ║${NC}"
-    echo -e "${BLUE}║            and log back in for permissions to apply           ║${NC}"
+    echo -e "${BLUE}║     ⚠ Please log out and log back in for permissions          ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo "After logging back in, the app will start automatically."
+elif [ "$APP_LAUNCHED" = true ]; then
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║     ✓ App is now running! Press Super+V to open.              ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
 else
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║            ✓ Ready to use! Press Super+V to open.             ║${NC}"
+    echo -e "${GREEN}║     ✓ Installed! Find 'Clipboard History' in your app menu.   ║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
 fi
 
 echo ""
-echo "Tips:"
-echo "  • The app runs in the system tray"
-echo "  • Use Super+V or Ctrl+Alt+V to open clipboard history"
-echo "  • Run 'win11-clipboard-history --version' to check version"
+echo "To uninstall:"
+case "$DISTRO" in
+    ubuntu|debian|linuxmint|pop|kali|neon)
+        echo "  sudo apt remove win11-clipboard-history"
+        ;;
+    fedora|rhel|centos|almalinux|rocky)
+        echo "  sudo dnf remove win11-clipboard-history"
+        ;;
+    *)
+        echo "  rm -rf ~/.local/lib/win11-clipboard-history ~/.local/bin/win11-clipboard-history ~/.config/autostart/win11-clipboard-history.desktop"
+        ;;
+esac
