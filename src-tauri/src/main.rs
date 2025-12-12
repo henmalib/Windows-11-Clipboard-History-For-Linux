@@ -10,12 +10,15 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewWindow,
 };
 use win11_clipboard_history_lib::clipboard_manager::{ClipboardItem, ClipboardManager};
+use win11_clipboard_history_lib::emoji_manager::{EmojiManager, EmojiUsage};
 use win11_clipboard_history_lib::focus_manager::{restore_focused_window, save_focused_window};
 use win11_clipboard_history_lib::hotkey_manager::{HotkeyAction, HotkeyManager};
+use win11_clipboard_history_lib::input_simulator::simulate_paste_keystroke;
 
 /// Application state shared across all handlers
 pub struct AppState {
     clipboard_manager: Arc<Mutex<ClipboardManager>>,
+    emoji_manager: Arc<Mutex<EmojiManager>>,
     hotkey_manager: Arc<Mutex<Option<HotkeyManager>>>,
 }
 
@@ -73,6 +76,76 @@ async fn paste_item(app: AppHandle, state: State<'_, AppState>, id: String) -> R
             .map_err(|e| format!("Failed to paste: {}", e))?;
     }
 
+    Ok(())
+}
+
+/// Get recent emojis from LRU cache
+#[tauri::command]
+fn get_recent_emojis(state: State<AppState>) -> Vec<EmojiUsage> {
+    state.emoji_manager.lock().get_recent()
+}
+
+/// Helper to paste text via clipboard pipeline
+/// Pipeline: Mark as pasted -> Write to clipboard -> Hide window -> Restore focus -> Simulate Ctrl+V
+async fn paste_text_via_clipboard(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    text: &str,
+) -> Result<(), String> {
+    // Step 1: Mark text as "pasted by us" so clipboard watcher ignores it
+    {
+        let mut clipboard_manager = state.clipboard_manager.lock();
+        clipboard_manager.mark_text_as_pasted(text);
+    }
+
+    // Step 2: Write to system clipboard (transport only)
+    {
+        use arboard::Clipboard;
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {}", e))?;
+        clipboard
+            .set_text(text)
+            .map_err(|e| format!("Failed to set clipboard: {}", e))?;
+    }
+
+    // Step 3: Hide window
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+
+    // Step 4: Restore focus
+    if let Err(e) = restore_focused_window() {
+        eprintln!("Warning: Failed to restore focus: {}", e);
+    }
+
+    // Step 5: Wait for focus to be fully restored
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // Step 6: Simulate Ctrl+V
+    simulate_paste_keystroke()?;
+
+    Ok(())
+}
+
+/// Paste an emoji character
+/// Pipeline: Record usage -> Delegate to paste_text_via_clipboard
+#[tauri::command]
+async fn paste_emoji(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    char: String,
+) -> Result<(), String> {
+    eprintln!("[PasteEmoji] Starting paste for emoji: {}", char);
+
+    // Record usage in LRU cache
+    {
+        let mut emoji_manager = state.emoji_manager.lock();
+        emoji_manager.record_usage(&char);
+    }
+
+    // Delegate to shared pipeline
+    paste_text_via_clipboard(&app, &state, &char).await?;
+
+    eprintln!("[PasteEmoji] Paste complete");
     Ok(())
 }
 
@@ -256,6 +329,9 @@ fn start_clipboard_watcher(app: AppHandle, clipboard_manager: Arc<Mutex<Clipboar
                     }
                 }
             }
+
+            // Release the lock before sleeping
+            drop(manager);
         }
     });
 }
@@ -314,10 +390,17 @@ fn main() {
 
     let clipboard_manager = Arc::new(Mutex::new(ClipboardManager::new()));
 
+    // Initialize emoji manager with app data directory
+    let emoji_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("win11-clipboard-history");
+    let emoji_manager = Arc::new(Mutex::new(EmojiManager::new(emoji_data_dir)));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             clipboard_manager: clipboard_manager.clone(),
+            emoji_manager: emoji_manager.clone(),
             hotkey_manager: Arc::new(Mutex::new(None)),
         })
         .setup(move |app| {
@@ -396,6 +479,8 @@ fn main() {
             delete_item,
             toggle_pin,
             paste_item,
+            get_recent_emojis,
+            paste_emoji,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -315,6 +315,18 @@ impl ClipboardManager {
         }
     }
 
+    /// Mark a specific text as pasted (to prevent it from appearing in history)
+    /// Used for emojis which should not pollute clipboard history
+    pub fn mark_text_as_pasted(&mut self, text: &str) {
+        self.last_pasted_text = Some(text.to_string());
+        // Also update the hash to prevent duplicate detection
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        text.hash(&mut hasher);
+        self.last_added_text_hash = Some(hasher.finish());
+    }
+
     /// Paste an item (write to clipboard and simulate Ctrl+V)
     pub fn paste_item(&mut self, item: &ClipboardItem) -> Result<(), String> {
         // Mark as pasted BEFORE writing to clipboard to avoid duplicate detection
@@ -347,260 +359,10 @@ impl ClipboardManager {
         }
 
         // Simulate Ctrl+V to paste
-        simulate_paste()?;
+        crate::input_simulator::simulate_paste_keystroke()?;
 
         Ok(())
     }
-}
-
-/// Simulate Ctrl+V keypress for paste injection
-#[cfg(target_os = "linux")]
-fn simulate_paste() -> Result<(), String> {
-    // Longer delay to ensure focus is properly restored and clipboard is ready
-    std::thread::sleep(std::time::Duration::from_millis(10));
-
-    eprintln!("[SimulatePaste] Sending Ctrl+V...");
-
-    // Try uinput first - works for ALL apps (X11, XWayland, native Wayland)
-    match simulate_paste_uinput() {
-        Ok(()) => {
-            eprintln!("[SimulatePaste] Ctrl+V sent via uinput");
-            return Ok(());
-        }
-        Err(e) => {
-            eprintln!("[SimulatePaste] uinput failed: {}, trying fallbacks...", e);
-        }
-    }
-
-    // Fallback to enigo for XWayland apps
-    match simulate_paste_enigo() {
-        Ok(()) => {
-            eprintln!("[SimulatePaste] Ctrl+V sent via enigo");
-            return Ok(());
-        }
-        Err(e) => {
-            eprintln!("[SimulatePaste] enigo failed: {}", e);
-        }
-    }
-
-    // Last fallback to xdotool
-    if std::env::var("DISPLAY").is_ok() {
-        if let Ok(output) = std::process::Command::new("xdotool")
-            .args(["key", "--clearmodifiers", "ctrl+v"])
-            .output()
-        {
-            if output.status.success() {
-                eprintln!("[SimulatePaste] Ctrl+V sent via xdotool");
-                return Ok(());
-            }
-        }
-    }
-
-    Err("All paste methods failed".to_string())
-}
-
-/// Simulate paste using uinput (works for ALL apps including native Wayland)
-#[cfg(target_os = "linux")]
-fn simulate_paste_uinput() -> Result<(), String> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-    use std::os::unix::io::AsRawFd;
-
-    // Linux input event codes
-    const EV_SYN: u16 = 0x00;
-    const EV_KEY: u16 = 0x01;
-    const SYN_REPORT: u16 = 0x00;
-    const KEY_LEFTCTRL: u16 = 29;
-    const KEY_V: u16 = 47;
-
-    // input_event struct layout for x86_64:
-    // struct timeval { long tv_sec; long tv_usec; } = 16 bytes
-    // __u16 type = 2 bytes
-    // __u16 code = 2 bytes
-    // __s32 value = 4 bytes
-    // Total = 24 bytes
-
-    fn make_event(type_: u16, code: u16, value: i32) -> [u8; 24] {
-        let mut event = [0u8; 24];
-        // timeval (16 bytes) - leave as zeros
-        // type (2 bytes at offset 16)
-        event[16..18].copy_from_slice(&type_.to_ne_bytes());
-        // code (2 bytes at offset 18)
-        event[18..20].copy_from_slice(&code.to_ne_bytes());
-        // value (4 bytes at offset 20)
-        event[20..24].copy_from_slice(&value.to_ne_bytes());
-        event
-    }
-
-    // Open uinput device
-    let mut uinput = OpenOptions::new()
-        .write(true)
-        .open("/dev/uinput")
-        .map_err(|e| format!("Failed to open /dev/uinput: {}", e))?;
-
-    // Set up uinput device
-    // UI_SET_EVBIT = 0x40045564
-    // UI_SET_KEYBIT = 0x40045565
-    const UI_SET_EVBIT: libc::c_ulong = 0x40045564;
-    const UI_SET_KEYBIT: libc::c_ulong = 0x40045565;
-    const UI_DEV_SETUP: libc::c_ulong = 0x405c5503;
-    const UI_DEV_CREATE: libc::c_ulong = 0x5501;
-    const UI_DEV_DESTROY: libc::c_ulong = 0x5502;
-
-    unsafe {
-        // Enable EV_KEY events
-        if libc::ioctl(uinput.as_raw_fd(), UI_SET_EVBIT, EV_KEY as libc::c_int) < 0 {
-            return Err("Failed to set EV_KEY".to_string());
-        }
-
-        // Enable the keys we need
-        if libc::ioctl(
-            uinput.as_raw_fd(),
-            UI_SET_KEYBIT,
-            KEY_LEFTCTRL as libc::c_int,
-        ) < 0
-        {
-            return Err("Failed to set KEY_LEFTCTRL".to_string());
-        }
-        if libc::ioctl(uinput.as_raw_fd(), UI_SET_KEYBIT, KEY_V as libc::c_int) < 0 {
-            return Err("Failed to set KEY_V".to_string());
-        }
-
-        // Setup device info
-        #[repr(C)]
-        struct UinputSetup {
-            id: [u16; 4], // bus, vendor, product, version
-            name: [u8; 80],
-            ff_effects_max: u32,
-        }
-
-        let mut setup = UinputSetup {
-            id: [0x03, 0x1234, 0x5678, 0x0001], // BUS_USB
-            name: [0; 80],
-            ff_effects_max: 0,
-        };
-        let name = b"clipboard-paste-helper";
-        setup.name[..name.len()].copy_from_slice(name);
-
-        if libc::ioctl(uinput.as_raw_fd(), UI_DEV_SETUP, &setup) < 0 {
-            return Err("Failed to setup uinput device".to_string());
-        }
-
-        // Create the device
-        if libc::ioctl(uinput.as_raw_fd(), UI_DEV_CREATE) < 0 {
-            return Err("Failed to create uinput device".to_string());
-        }
-    }
-
-    // Longer delay for device to be fully ready and recognized by the system
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Send Ctrl+V with proper timing
-    // Press Ctrl first and wait for it to register
-    uinput
-        .write_all(&make_event(EV_KEY, KEY_LEFTCTRL, 1))
-        .map_err(|e| e.to_string())?;
-    uinput
-        .write_all(&make_event(EV_SYN, SYN_REPORT, 0))
-        .map_err(|e| e.to_string())?;
-    uinput.flush().map_err(|e| e.to_string())?;
-
-    // Wait for Ctrl to be fully registered
-    std::thread::sleep(std::time::Duration::from_millis(30));
-
-    // Press V while Ctrl is held
-    uinput
-        .write_all(&make_event(EV_KEY, KEY_V, 1))
-        .map_err(|e| e.to_string())?;
-    uinput
-        .write_all(&make_event(EV_SYN, SYN_REPORT, 0))
-        .map_err(|e| e.to_string())?;
-    uinput.flush().map_err(|e| e.to_string())?;
-
-    std::thread::sleep(std::time::Duration::from_millis(30));
-
-    // Release V
-    uinput
-        .write_all(&make_event(EV_KEY, KEY_V, 0))
-        .map_err(|e| e.to_string())?;
-    uinput
-        .write_all(&make_event(EV_SYN, SYN_REPORT, 0))
-        .map_err(|e| e.to_string())?;
-    uinput.flush().map_err(|e| e.to_string())?;
-
-    std::thread::sleep(std::time::Duration::from_millis(30));
-
-    // Release Ctrl last
-    uinput
-        .write_all(&make_event(EV_KEY, KEY_LEFTCTRL, 0))
-        .map_err(|e| e.to_string())?;
-    uinput
-        .write_all(&make_event(EV_SYN, SYN_REPORT, 0))
-        .map_err(|e| e.to_string())?;
-    uinput.flush().map_err(|e| e.to_string())?;
-
-    // Wait for events to be processed before destroying device
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Destroy the device
-    unsafe {
-        libc::ioctl(uinput.as_raw_fd(), UI_DEV_DESTROY);
-    }
-
-    Ok(())
-}
-
-/// Fallback paste simulation using enigo (X11/XWayland only)
-#[cfg(target_os = "linux")]
-fn simulate_paste_enigo() -> Result<(), String> {
-    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-
-    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| {
-        eprintln!("[SimulatePaste] Failed to create Enigo: {}", e);
-        e.to_string()
-    })?;
-
-    // Press Ctrl
-    enigo.key(Key::Control, Direction::Press).map_err(|e| {
-        eprintln!("[SimulatePaste] Ctrl press failed: {}", e);
-        e.to_string()
-    })?;
-
-    std::thread::sleep(std::time::Duration::from_millis(20));
-
-    // Press and release V
-    enigo
-        .key(Key::Unicode('v'), Direction::Press)
-        .map_err(|e| {
-            eprintln!("[SimulatePaste] V press failed: {}", e);
-            e.to_string()
-        })?;
-
-    std::thread::sleep(std::time::Duration::from_millis(20));
-
-    enigo
-        .key(Key::Unicode('v'), Direction::Release)
-        .map_err(|e| {
-            eprintln!("[SimulatePaste] V release failed: {}", e);
-            e.to_string()
-        })?;
-
-    std::thread::sleep(std::time::Duration::from_millis(20));
-
-    // Release Ctrl
-    enigo.key(Key::Control, Direction::Release).map_err(|e| {
-        eprintln!("[SimulatePaste] Ctrl release failed: {}", e);
-        e.to_string()
-    })?;
-
-    eprintln!("[SimulatePaste] Ctrl+V sent via enigo");
-    Ok(())
-}
-
-#[cfg(not(target_os = "linux"))]
-fn simulate_paste() -> Result<(), String> {
-    // Fallback for other platforms - just set clipboard
-    Ok(())
 }
 
 impl Default for ClipboardManager {

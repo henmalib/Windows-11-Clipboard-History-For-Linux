@@ -8,6 +8,7 @@ import { TabBar } from './components/TabBar'
 import { Header } from './components/Header'
 import { EmptyState } from './components/EmptyState'
 import { DragHandle } from './components/DragHandle'
+import { EmojiPicker } from './components/EmojiPicker'
 import type { ActiveTab } from './types/clipboard'
 
 /**
@@ -83,13 +84,7 @@ function App() {
         )
 
       case 'emoji':
-        return (
-          <div className="flex flex-col items-center justify-center h-full py-12 px-4 text-center">
-            <p className="text-sm dark:text-win11-text-secondary text-win11Light-text-secondary">
-              Emoji picker coming soon! 😊
-            </p>
-          </div>
-        )
+        return <EmojiPicker />
 
       default:
         return null
@@ -120,7 +115,15 @@ function App() {
       <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
 
       {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto scrollbar-win11">{renderContent()}</div>
+      <div
+        className={clsx(
+          'flex-1',
+          // Only use scrollbar for non-emoji tabs, emoji has its own virtualized scrolling
+          activeTab === 'emoji' ? 'overflow-hidden' : 'overflow-y-auto scrollbar-win11'
+        )}
+      >
+        {renderContent()}
+      </div>
 
       {/* Footer hint */}
       <div className="px-4 py-2 text-center border-t dark:border-win11-border-subtle border-win11Light-border">
