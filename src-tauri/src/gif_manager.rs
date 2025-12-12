@@ -172,10 +172,10 @@ fn copy_gif_to_clipboard_x11(gif_path: &Path) -> Result<(), String> {
         .arg("-f") // Fork before setsid
         .arg("sh")
         .arg("-c")
-        .arg(format!(
-            "echo -n '{}' | DISPLAY='{}' xclip -selection clipboard -t text/uri-list -loops 0",
-            file_uri, display
-        ))
+        .arg("printf %s \"$1\" | DISPLAY=\"$2\" xclip -selection clipboard -t text/uri-list -loops 0")
+        .arg("xclip_worker") // $0
+        .arg(&file_uri)      // $1
+        .arg(&display)       // $2
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
