@@ -10,17 +10,21 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WebviewWindow,
+    WindowEvent,
 };
 use win11_clipboard_history_lib::clipboard_manager::{ClipboardItem, ClipboardManager};
+use win11_clipboard_history_lib::config_manager::{resolve_window_position, ConfigManager};
 use win11_clipboard_history_lib::emoji_manager::{EmojiManager, EmojiUsage};
 use win11_clipboard_history_lib::focus_manager::{restore_focused_window, save_focused_window};
 use win11_clipboard_history_lib::hotkey_manager::{HotkeyAction, HotkeyManager};
 use win11_clipboard_history_lib::input_simulator::simulate_paste_keystroke;
+use win11_clipboard_history_lib::session::is_wayland;
 
 /// Application state shared across all handlers
 pub struct AppState {
     clipboard_manager: Arc<Mutex<ClipboardManager>>,
     emoji_manager: Arc<Mutex<EmojiManager>>,
+    config_manager: Arc<Mutex<ConfigManager>>,
     hotkey_manager: Arc<Mutex<Option<HotkeyManager>>>,
     is_mouse_inside: Arc<AtomicBool>,
 }
@@ -174,24 +178,55 @@ impl WindowController {
     pub fn toggle(app: &AppHandle) {
         if let Some(window) = app.get_webview_window("main") {
             if window.is_visible().unwrap_or(false) {
-                // If focused or visible, hide it
                 let _ = window.hide();
             } else {
-                // If hidden, save who had focus, move window, then show
                 save_focused_window();
-                Self::position_and_show(&window);
+                Self::position_and_show(&window, app);
             }
         }
     }
 
     pub fn hide(app: &AppHandle) {
         if let Some(window) = app.get_webview_window("main") {
+            // FLUSH CONFIG TO DISK ON HIDE
+            if let Some(state) = app.try_state::<AppState>() {
+                if is_wayland() {
+                    state.config_manager.lock().sync_to_disk();
+                }
+            }
             let _ = window.hide();
         }
     }
 
-    fn position_and_show(window: &WebviewWindow) {
-        // 1. Get Cursor
+    fn position_and_show(window: &WebviewWindow, app: &AppHandle) {
+        let state = app.state::<AppState>();
+
+        if is_wayland() {
+            Self::position_for_wayland(window, &state);
+        } else {
+            Self::position_for_non_wayland(window);
+        }
+
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
+    fn position_for_wayland(window: &WebviewWindow, state: &State<AppState>) {
+        let config = state.config_manager.lock();
+
+        if let Ok(monitors) = window.available_monitors() {
+            if !monitors.is_empty() {
+                let win_size = window.outer_size().unwrap_or(PhysicalSize::new(360, 480));
+
+                let window_state = config.get_state();
+                let pos = resolve_window_position(&window_state, &monitors, win_size);
+
+                let _ = window.set_position(pos);
+            }
+        }
+    }
+
+    fn position_for_non_wayland(window: &WebviewWindow) {
         let (cursor_x, cursor_y) = match Self::get_cursor_position(window) {
             Some(pos) => pos,
             None => {
@@ -202,19 +237,14 @@ impl WindowController {
             }
         };
 
-        // 2. Identify correct monitor
         let target_monitor = Self::find_monitor_containing(window, cursor_x, cursor_y)
             .or_else(|| window.current_monitor().ok().flatten())
             .or_else(|| window.primary_monitor().ok().flatten());
 
-        // 3. Calculate position relative to that monitor
         if let Some(monitor) = target_monitor {
             let pos = Self::clamp_window_to_monitor(window, &monitor, cursor_x, cursor_y);
             let _ = window.set_position(pos);
         }
-
-        let _ = window.show();
-        let _ = window.set_focus();
     }
 
     fn find_monitor_containing(window: &WebviewWindow, x: i32, y: i32) -> Option<Monitor> {
@@ -298,6 +328,28 @@ impl WindowController {
     }
 }
 
+// --- Window Event Helper ---
+
+fn handle_window_moved_for_wayland(
+    window: &WebviewWindow,
+    state: &State<AppState>,
+    pos: &PhysicalPosition<i32>,
+) {
+    if !is_wayland() || !window.is_visible().unwrap_or(false) {
+        return;
+    }
+
+    let monitor_name = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| m.name().map(|n| n.to_string()));
+
+    let mut config = state.config_manager.lock();
+    // UPDATE MEMORY ONLY (No Disk I/O here)
+    config.update_state(monitor_name, pos.x, pos.y);
+}
+
 // --- Background Listeners ---
 
 fn start_clipboard_watcher(app: AppHandle, clipboard_manager: Arc<Mutex<ClipboardManager>>) {
@@ -363,16 +415,21 @@ fn main() {
 
     let is_mouse_inside = Arc::new(AtomicBool::new(false));
     let clipboard_manager = Arc::new(Mutex::new(ClipboardManager::new()));
-    let emoji_dir = dirs::data_local_dir()
+
+    let base_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("win11-clipboard-history");
-    let emoji_manager = Arc::new(Mutex::new(EmojiManager::new(emoji_dir)));
+
+    let emoji_manager = Arc::new(Mutex::new(EmojiManager::new(base_dir.clone())));
+
+    let config_manager = Arc::new(Mutex::new(ConfigManager::new(base_dir)));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             clipboard_manager: clipboard_manager.clone(),
             emoji_manager: emoji_manager.clone(),
+            config_manager: config_manager.clone(),
             hotkey_manager: Arc::new(Mutex::new(None)),
             is_mouse_inside: is_mouse_inside.clone(),
         })
@@ -404,19 +461,29 @@ fn main() {
                 })
                 .build(app)?;
 
-            // Blur Handler
+            // Window Event Handlers (Focus & Move)
             let main_window = app.get_webview_window("main").unwrap();
             let w_clone = main_window.clone();
-            main_window.on_window_event(move |event| {
-                if let tauri::WindowEvent::Focused(false) = event {
-                    let state = w_clone.state::<AppState>();
 
+            main_window.on_window_event(move |event| match event {
+                WindowEvent::Focused(false) => {
+                    let state = w_clone.state::<AppState>();
                     if state.is_mouse_inside.load(Ordering::Relaxed) {
                         return;
                     }
 
+                    if is_wayland() {
+                        state.config_manager.lock().sync_to_disk();
+                    }
+
                     let _ = w_clone.hide();
                 }
+
+                WindowEvent::Moved(pos) => {
+                    let state = w_clone.state::<AppState>();
+                    handle_window_moved_for_wayland(&w_clone, &state, pos);
+                }
+                _ => {}
             });
 
             start_clipboard_watcher(app_handle.clone(), clipboard_manager);
