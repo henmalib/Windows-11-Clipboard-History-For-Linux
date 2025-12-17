@@ -62,9 +62,9 @@ function applyBackgroundOpacity(settings: UserSettings) {
   // The gradient end is slightly less opaque than start for a subtle effect
   // Using a small offset (0.03) to create a gentle gradient
   const darkStart = settings.dark_background_opacity
-  const darkEnd = Math.max(0, darkStart - 0.03)
+  const darkEnd = darkStart >= 1 ? 1 : Math.max(0, darkStart - 0.03)
   const lightStart = settings.light_background_opacity
-  const lightEnd = Math.max(0, lightStart - 0.05)
+  const lightEnd = lightStart >= 1 ? 1 : Math.max(0, lightStart - 0.05)
 
   root.style.setProperty('--win11-dark-bg-alpha-start', darkStart.toString())
   root.style.setProperty('--win11-dark-bg-alpha-end', darkEnd.toString())
