@@ -412,7 +412,7 @@ export function GifPicker({ isDark, opacity }: GifPickerProps) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden relative">
+    <div className="flex flex-col h-full overflow-hidden relative select-none">
       {/* Loading Overlay */}
       {isPasting && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/20 backdrop-blur-[1px]">

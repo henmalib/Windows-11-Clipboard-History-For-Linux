@@ -525,7 +525,7 @@ export function EmojiPicker({ isDark, opacity }: EmojiPickerProps) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden select-none">
       {/* Search bar */}
       <div className="px-3 pt-3 pb-2 flex-shrink-0">
         <SearchBar

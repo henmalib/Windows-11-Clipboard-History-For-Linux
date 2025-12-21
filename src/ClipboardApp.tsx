@@ -264,7 +264,7 @@ function ClipboardApp() {
       case 'clipboard':
         if (isLoading) {
           return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center h-full select-none">
               <div className="w-6 h-6 border-2 border-win11-bg-accent border-t-transparent rounded-full animate-spin" />
             </div>
           )
@@ -323,7 +323,7 @@ function ClipboardApp() {
   return (
     <div
       className={clsx(
-        'h-screen w-screen overflow-hidden flex flex-col rounded-win11-lg',
+        'h-screen w-screen overflow-hidden flex flex-col rounded-win11-lg select-none',
         isDark ? 'glass-effect' : 'glass-effect-light',
         isDark ? 'bg-win11-acrylic-bg' : 'bg-win11Light-acrylic-bg',
         isDark ? 'text-win11-text-primary' : 'text-win11Light-text-primary'
