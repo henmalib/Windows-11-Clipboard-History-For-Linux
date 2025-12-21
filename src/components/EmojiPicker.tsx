@@ -5,8 +5,10 @@
 import { useState, useCallback, memo, useRef, useLayoutEffect, useEffect } from 'react'
 import { Grid, useGridRef } from 'react-window'
 import { clsx } from 'clsx'
-import { Search, Clock, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEmojiPicker } from '../hooks/useEmojiPicker'
+import { SearchBar } from './SearchBar'
+import { getTertiaryBackgroundStyle } from '../utils/themeUtils'
 import type { Emoji } from '../services/emojiService'
 
 /** Size of each emoji cell */
@@ -46,9 +48,9 @@ const EmojiCell = memo(function EmojiCell({
       className={clsx(
         'flex items-center justify-center',
         'w-full h-full text-2xl',
-        'rounded-md transition-all duration-100',
-        'hover:bg-win11-bg-tertiary dark:hover:bg-win11-bg-card-hover',
-        'hover:scale-110',
+        'rounded-md transition-transform duration-100',
+        'hover:bg-win11Light-bg-tertiary dark:hover:bg-win11-bg-card-hover',
+        'hover:scale-110 transform-gpu hover:will-change-transform',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-win11-bg-accent'
       )}
       title={emoji.name}
@@ -68,6 +70,8 @@ interface CategoryPillProps {
   onKeyDown?: (e: React.KeyboardEvent) => void
   onFocus?: () => void
   'data-category-index'?: number
+  isDark: boolean
+  opacity: number
 }
 
 const CategoryPill = memo(function CategoryPill({
@@ -78,6 +82,8 @@ const CategoryPill = memo(function CategoryPill({
   onKeyDown,
   onFocus,
   'data-category-index': index,
+  isDark,
+  opacity,
 }: CategoryPillProps) {
   return (
     <button
@@ -93,11 +99,11 @@ const CategoryPill = memo(function CategoryPill({
         isActive
           ? 'bg-win11-bg-accent text-white'
           : [
-              'dark:bg-win11-bg-tertiary bg-win11Light-bg-tertiary',
-              'dark:text-win11-text-secondary text-win11Light-text-secondary',
+              'text-win11Light-text-secondary dark:text-win11-text-secondary',
               'hover:dark:bg-win11-bg-card-hover hover:bg-win11Light-bg-card-hover',
             ]
       )}
+      style={!isActive ? getTertiaryBackgroundStyle(isDark, opacity) : undefined}
     >
       {category}
     </button>
@@ -167,7 +173,12 @@ function EmojiGridCell({
   )
 }
 
-export function EmojiPicker() {
+export interface EmojiPickerProps {
+  isDark: boolean
+  opacity: number
+}
+
+export function EmojiPicker({ isDark, opacity }: EmojiPickerProps) {
   const {
     searchQuery,
     setSearchQuery,
@@ -517,37 +528,14 @@ export function EmojiPicker() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Search bar */}
       <div className="px-3 pt-3 pb-2 flex-shrink-0">
-        <div
-          className={clsx(
-            'flex items-center gap-2 px-3 py-2',
-            'rounded-md',
-            'dark:bg-win11-bg-tertiary bg-win11Light-bg-tertiary',
-            'border dark:border-win11-border-subtle border-win11Light-border',
-            'focus-within:ring-2 focus-within:ring-win11-bg-accent'
-          )}
-        >
-          <Search className="w-4 h-4 dark:text-win11-text-tertiary text-win11Light-text-secondary flex-shrink-0" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search emojis..."
-            className={clsx(
-              'flex-1 bg-transparent border-none outline-none',
-              'text-sm',
-              'dark:text-win11-text-primary text-win11Light-text-primary',
-              'placeholder:dark:text-win11-text-tertiary placeholder:text-win11Light-text-secondary'
-            )}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="p-0.5 rounded dark:hover:bg-win11-bg-card-hover hover:bg-win11Light-bg-card-hover"
-            >
-              <X className="w-4 h-4 dark:text-win11-text-tertiary text-win11Light-text-secondary" />
-            </button>
-          )}
-        </div>
+        <SearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search emojis..."
+          aria-label="Search emojis"
+          isDark={isDark}
+          opacity={opacity}
+        />
       </div>
 
       {/* Recent emojis (only show when not searching) */}
@@ -576,7 +564,7 @@ export function EmojiPicker() {
                 className={clsx(
                   'w-8 h-8 flex items-center justify-center text-xl',
                   'rounded-md transition-all duration-100',
-                  'hover:bg-win11-bg-tertiary dark:hover:bg-win11-bg-card-hover',
+                  'hover:bg-win11Light-bg-tertiary dark:hover:bg-win11-bg-card-hover',
                   'hover:scale-110',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-win11-bg-accent'
                 )}
@@ -595,7 +583,7 @@ export function EmojiPicker() {
         <div className="px-3 pb-2 flex-shrink-0 flex items-center gap-1">
           <button
             onClick={() => scrollCategories('left')}
-            className="p-1 rounded-full hover:bg-win11-bg-tertiary dark:hover:bg-win11-bg-card-hover text-win11Light-text-secondary dark:text-win11-text-secondary"
+            className="p-1 rounded-full hover:bg-win11Light-bg-tertiary dark:hover:bg-win11-bg-card-hover text-win11Light-text-secondary dark:text-win11-text-secondary"
             tabIndex={-1}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -615,6 +603,8 @@ export function EmojiPicker() {
               onKeyDown={(e) => handleCategoryKeyDown(e, 0)}
               onFocus={() => setCategoryFocusedIndex(0)}
               data-category-index={0}
+              isDark={isDark}
+              opacity={opacity}
             />
             {categories.map((cat, index) => (
               <CategoryPill
@@ -626,13 +616,15 @@ export function EmojiPicker() {
                 onKeyDown={(e) => handleCategoryKeyDown(e, index + 1)}
                 onFocus={() => setCategoryFocusedIndex(index + 1)}
                 data-category-index={index + 1}
+                isDark={isDark}
+                opacity={opacity}
               />
             ))}
           </div>
 
           <button
             onClick={() => scrollCategories('right')}
-            className="p-1 rounded-full hover:bg-win11-bg-tertiary dark:hover:bg-win11-bg-card-hover text-win11Light-text-secondary dark:text-win11-text-secondary"
+            className="p-1 rounded-full hover:bg-win11Light-bg-tertiary dark:hover:bg-win11-bg-card-hover text-win11Light-text-secondary dark:text-win11-text-secondary"
             tabIndex={-1}
           >
             <ChevronRight className="w-4 h-4" />
@@ -650,7 +642,12 @@ export function EmojiPicker() {
           </div>
         )}
         {filteredEmojis.length > 0 && dimensions.width > 0 && (
-          <div ref={mainGridContainerRef} role="grid" aria-label="Emoji grid">
+          <div
+            ref={mainGridContainerRef}
+            role="grid"
+            aria-label="Emoji grid"
+            style={{ height: gridHeight }}
+          >
             <Grid<EmojiGridData>
               gridRef={gridRef}
               columnCount={columnCount}
@@ -660,7 +657,7 @@ export function EmojiPicker() {
               defaultHeight={gridHeight}
               defaultWidth={gridWidth}
               className="scrollbar-win11"
-              style={{ overflowX: 'hidden' }}
+              style={{ overflowX: 'hidden', overflowY: 'scroll' }}
               cellProps={{
                 emojis: filteredEmojis,
                 onSelect: handleSelect,

@@ -11,6 +11,7 @@ import { EmptyState } from './components/EmptyState'
 import { DragHandle } from './components/DragHandle'
 import { EmojiPicker } from './components/EmojiPicker'
 import { GifPicker } from './components/GifPicker'
+import { calculateSecondaryOpacity, calculateTertiaryOpacity } from './utils/themeUtils'
 import type { ActiveTab } from './types/clipboard'
 
 /** User settings type matching the Rust struct */
@@ -93,6 +94,9 @@ function ClipboardApp() {
   const [focusedIndex, setFocusedIndex] = useState(0)
 
   const isDark = useThemeMode(settings.theme_mode)
+  const opacity = isDark ? settings.dark_background_opacity : settings.light_background_opacity
+  const secondaryOpacity = calculateSecondaryOpacity(opacity)
+  const tertiaryOpacity = calculateTertiaryOpacity(opacity)
 
   const { history, isLoading, clearHistory, deleteItem, togglePin, pasteItem } =
     useClipboardHistory()
@@ -267,7 +271,7 @@ function ClipboardApp() {
         }
 
         if (history.length === 0) {
-          return <EmptyState />
+          return <EmptyState isDark={isDark} />
         }
 
         return (
@@ -275,6 +279,8 @@ function ClipboardApp() {
             <Header
               onClearHistory={clearHistory}
               itemCount={history.filter((i) => !i.pinned).length}
+              isDark={isDark}
+              tertiaryOpacity={tertiaryOpacity}
             />
             <div className="flex flex-col gap-2 p-3" role="listbox" aria-label="Clipboard history">
               {history.map((item, index) => (
@@ -290,6 +296,8 @@ function ClipboardApp() {
                   onDelete={deleteItem}
                   onTogglePin={togglePin}
                   onFocus={() => setFocusedIndex(index)}
+                  isDark={isDark}
+                  secondaryOpacity={secondaryOpacity}
                 />
               ))}
             </div>
@@ -297,10 +305,10 @@ function ClipboardApp() {
         )
 
       case 'emoji':
-        return <EmojiPicker />
+        return <EmojiPicker isDark={isDark} opacity={secondaryOpacity} />
 
       case 'gifs':
-        return <GifPicker />
+        return <GifPicker isDark={isDark} opacity={secondaryOpacity} />
 
       default:
         return null
@@ -324,18 +332,26 @@ function ClipboardApp() {
       onMouseLeave={handleMouseLeave}
     >
       {/* Drag Handle */}
-      <DragHandle />
+      <DragHandle isDark={isDark} />
 
       {/* Tab bar */}
-      <TabBar ref={tabBarRef} activeTab={activeTab} onTabChange={handleTabChange} />
+      <TabBar
+        ref={tabBarRef}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        isDark={isDark}
+        tertiaryOpacity={tertiaryOpacity}
+      />
 
       {/* Scrollable content area */}
       <div
         ref={contentContainerRef}
         className={clsx(
           'flex-1',
-          // Only use scrollbar for non-emoji tabs, emoji has its own virtualized scrolling
-          activeTab === 'emoji' ? 'overflow-hidden' : 'overflow-y-auto scrollbar-win11'
+          // Only use scrollbar for non-emoji/gif tabs, they have their own virtualized scrolling
+          activeTab === 'emoji' || activeTab === 'gifs'
+            ? 'overflow-hidden'
+            : 'overflow-y-auto scrollbar-win11'
         )}
       >
         {renderContent()}
