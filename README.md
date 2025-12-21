@@ -1,4 +1,4 @@
-# 📋 Windows 11 Clipboard History For Linux
+<img width="2750" height="1188" alt="Gemini_Generated_Image_8mrq328mrq328mrq" src="https://github.com/user-attachments/assets/77555ef6-bb82-4e4a-9ce1-d863566e68fe" />
 
 <div align="center">
 
@@ -11,8 +11,7 @@
 **A beautiful, Windows 11-style Clipboard History Manager for Linux.**  
 *Works on Wayland & X11.*
 
-![Screenshot](./docs/img/banner.gif)
-![Screenshot](./docs/img/dynamic_themes.png)
+
 
 Built with 🦀 **Rust** + ⚡ **Tauri v2** + ⚛️ **React** + 🎨 **Tailwind CSS**
 
@@ -185,6 +184,8 @@ rm -f ~/.config/autostart/win11-clipboard-history.desktop
 3. Remove the shortcut or change it to "Disabled"
 
 ---
+
+![Screenshot](./docs/img/banner.gif)
 
 ## 🤝 Contributing
 
