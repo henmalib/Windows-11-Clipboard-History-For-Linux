@@ -142,8 +142,14 @@ async fn paste_text(
     app: AppHandle,
     state: State<'_, AppState>,
     text: String,
+    item_type: Option<String>,
 ) -> Result<(), String> {
-    state.emoji_manager.lock().record_usage(&text);
+    // 0. Record usage if applicable
+    if let Some(t) = item_type.as_deref() {
+        if t == "emoji" {
+            state.emoji_manager.lock().record_usage(&text);
+        }
+    }
 
     // 1. Prepare Environment
     WindowController::hide(&app);
@@ -161,7 +167,7 @@ async fn paste_text(
             .map_err(|e| e.to_string())?;
     }
 
-    // 3. Simulate Paste (Manual trigger required for emoji)
+    // 3. Simulate Paste
     simulate_paste_keystroke().map_err(|e| e.to_string())?;
 
     Ok(())
@@ -206,6 +212,18 @@ async fn finish_paste(app: AppHandle) -> Result<(), String> {
     WindowController::hide(&app);
     PasteHelper::prepare_target_window().await?;
     simulate_paste_keystroke().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn copy_text_to_clipboard(_state: State<'_, AppState>, text: String) -> Result<(), String> {
+    // 1. Update Internal Manager (for history consistency, optional but good)
+    // Only write to the system clipboard; the history manager is updated by the clipboard watcher if enabled.
+
+    use arboard::Clipboard;
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -532,9 +550,8 @@ fn start_clipboard_watcher(app: AppHandle, clipboard_manager: Arc<Mutex<Clipboar
             // Text
             if let Ok(text) = manager.get_current_text() {
                 if !text.is_empty() {
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    std::hash::Hash::hash(&text, &mut hasher);
-                    let text_hash = std::hash::Hasher::finish(&hasher);
+                    let text_hash =
+                        win11_clipboard_history_lib::clipboard_manager::calculate_hash(&text);
 
                     if Some(text_hash) != last_text_hash {
                         last_text_hash = Some(text_hash);
@@ -612,11 +629,17 @@ fn main() {
     win11_clipboard_history_lib::session::init();
 
     let is_mouse_inside = Arc::new(AtomicBool::new(false));
-    let clipboard_manager = Arc::new(Mutex::new(ClipboardManager::new()));
-
     let base_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("win11-clipboard-history");
+
+    // Ensure base directory exists
+    if let Err(e) = std::fs::create_dir_all(&base_dir) {
+        eprintln!("Failed to create base directory: {}", e);
+    }
+
+    let history_path = base_dir.join("history.json");
+    let clipboard_manager = Arc::new(Mutex::new(ClipboardManager::new(history_path)));
 
     let emoji_manager = Arc::new(Mutex::new(EmojiManager::new(base_dir.clone())));
 
@@ -813,14 +836,15 @@ fn main() {
             delete_item,
             toggle_pin,
             paste_item,
-            get_recent_emojis,
             paste_text,
+            get_recent_emojis,
             paste_gif_from_url,
             finish_paste,
             set_mouse_state,
             get_user_settings,
             set_user_settings,
             is_settings_window_visible,
+            copy_text_to_clipboard,
             permission_checker::check_permissions,
             permission_checker::fix_permissions_now,
             permission_checker::is_first_run,

@@ -33,11 +33,23 @@ export function ClipboardTab(props: {
     deleteItem,
     togglePin,
     onPaste,
-
+    settings,
     tabBarRef,
   } = props
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [isRegexMode, setIsRegexMode] = useState(false)
+
+  const [isCompact, setIsCompact] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('clipboard-history-compact-mode') === 'true'
+    }
+    return false
+  })
+
+  useEffect(() => {
+    localStorage.setItem('clipboard-history-compact-mode', String(isCompact))
+  }, [isCompact])
   const [isSearchVisible, setIsSearchVisible] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -99,11 +111,34 @@ export function ClipboardTab(props: {
   const filteredHistory = useMemo(() => {
     if (!searchQuery) return history
 
+    let regex: RegExp | null = null
+    if (isRegexMode) {
+      try {
+        regex = new RegExp(searchQuery, 'i')
+      } catch (err) {
+        console.error('Invalid regex pattern in clipboard search query:', searchQuery, err)
+        return []
+      }
+    }
+
     return history.filter((item) => {
-      if (item.content.type !== 'Text') return false
-      return item.content.data.toLowerCase().includes(searchQuery.toLowerCase())
+      let searchableText = ''
+      if (item.content.type === 'Text') {
+        searchableText = item.content.data
+      } else if (item.content.type === 'RichText') {
+        searchableText = item.content.data.plain
+      } else {
+        return false
+      }
+
+      if (isRegexMode && regex) {
+        return regex.test(searchableText)
+      } else if (!isRegexMode) {
+        return searchableText.toLowerCase().includes(searchQuery.toLowerCase())
+      }
+      return false
     })
-  }, [history, searchQuery])
+  }, [history, searchQuery, isRegexMode])
 
   // Keyboard navigation
   useHistoryKeyboardNavigation({
@@ -155,6 +190,8 @@ export function ClipboardTab(props: {
         itemCount={filteredHistory.length}
         isDark={isDark}
         tertiaryOpacity={tertiaryOpacity}
+        isCompact={isCompact}
+        onToggleCompact={() => setIsCompact(!isCompact)}
       />
       {/* Search Bar - only visible when Ctrl+F is pressed */}
       {isSearchVisible && (
@@ -166,6 +203,8 @@ export function ClipboardTab(props: {
             isDark={isDark}
             opacity={secondaryOpacity}
             placeholder="Search history..."
+            isRegex={isRegexMode}
+            onToggleRegex={() => setIsRegexMode(!isRegexMode)}
             onClear={() => {
               setSearchQuery('')
               setIsSearchVisible(false)
@@ -202,6 +241,9 @@ export function ClipboardTab(props: {
               onFocus={() => setFocusedIndex(index)}
               isDark={isDark}
               secondaryOpacity={secondaryOpacity}
+              isCompact={isCompact}
+              enableSmartActions={settings.enable_smart_actions}
+              enableUiPolish={settings.enable_ui_polish}
             />
           ))}
         </div>
