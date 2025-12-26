@@ -208,7 +208,6 @@ export function EmojiPicker({ isDark, opacity }: EmojiPickerProps) {
 
   // Reset focus indices when emojis change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentFocusedIndex(0)
     setMainFocusedIndex(0)
   }, [searchQuery, selectedCategory])
@@ -216,7 +215,7 @@ export function EmojiPicker({ isDark, opacity }: EmojiPickerProps) {
   // Measure container size - use useLayoutEffect for synchronous measurement
   useLayoutEffect(() => {
     let dimensionsCaptured = false
-    
+
     const updateSize = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect()
