@@ -104,7 +104,7 @@ export function CategoryStrip({
 
       <div
         ref={scrollContainerRef}
-        className="flex gap-1.5 overflow-x-hidden scroll-smooth flex-1"
+        className="flex gap-1.5 overflow-x-hidden scroll-smooth flex-1 py-1 px-1.5"
         role="tablist"
       >
         {/* All */}

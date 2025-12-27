@@ -113,7 +113,7 @@ export function KaomojiPicker({ isDark, opacity, customKaomojis = [] }: KaomojiP
       }
     >
       {/* Grid Area */}
-      <div ref={containerRef} className="h-full overflow-y-scroll p-3 pt-0 scrollbar-win11">
+      <div ref={containerRef} className="h-full overflow-y-scroll p-3 pt-3 scrollbar-win11">
         <div
           ref={gridContainerRef}
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
