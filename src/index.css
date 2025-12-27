@@ -66,6 +66,9 @@ body {
   .scrollbar-win11 {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+
+    scrollbar-gutter: stable;
+    isolation: isolate;
   }
 
   .scrollbar-win11::-webkit-scrollbar {
@@ -129,19 +132,6 @@ body {
     box-shadow:
       0 8px 32px rgba(0, 0, 0, 0.15),
       inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-  }
-
-  /* Card hover effect */
-  .card-hover {
-    @apply transition-all duration-150 ease-out;
-  }
-
-  .card-hover:hover {
-    @apply scale-[1.01];
-  }
-
-  .card-hover:active {
-    @apply scale-[0.99];
   }
 }
 
