@@ -375,6 +375,7 @@ rm -rf ~/.local/lib/win11-clipboard-history
 rm -f ~/.config/autostart/win11-clipboard-history.desktop
 ```
 
+
 **Check if it still have shortcuts registered and remove them:**
 > This can happen if the application was uninstalled while it was running or if the uninstall permissions were incorrect.
 
@@ -382,9 +383,24 @@ rm -f ~/.config/autostart/win11-clipboard-history.desktop
 2. Find "Win11 Clipboard History" or similar entry
 3. Remove the shortcut or change it to "Disabled"
 
+</details>
+
 ---
 
 ![Screenshot](./docs/img/banner.gif)
+
+## Contributors ✨
+
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
 
 ## 🤝 Contributing
 
